@@ -72,7 +72,7 @@ class Container
                     $mmTable = 'sys_dmail_ttcontent_category_mm';
                     $whereClause = '';
                     $orderBy = $foreignTable . '.uid';
-                    $res = $this->cObj->exec_mm_query_uidList(
+                    $res = $this->exec_mm_query_uidList(
                         $select,
                         $localTableUidList,
                         $mmTable,
@@ -152,5 +152,34 @@ class Container
         }
 
         return $content;
+    }
+
+    /**
+     * Executes a SELECT query for joining two tables according to the MM-relation standards used for tables configured in $GLOBALS['TCA']. That means MM-joins where the join table has the fields "uid_local" and "uid_foreign"
+     * The two tables joined is the join table ($mm_table) and the foreign table ($foreign_table) - so the "local table" is not included but instead you can supply a list of UID integers from the local table to match in the join-table.
+     *
+     * @param string $select List of fields to select
+     * @param string $local_table_uidlist List of UID integers, eg. "1,2,3,456
+     * @param string $mm_table The join-table; The "uid_local" field of this table will be matched with the list of UID numbers from $local_table_uidlist
+     * @param string $foreign_table Optionally: The foreign table; The "uid" field of this table will be matched with $mm_table's "uid_foreign" field. If you set this field to blank only records from the $mm_table is returned. No join performed.
+     * @param string $whereClause Optional additional WHERE clauses put in the end of the query. DO NOT PUT IN GROUP BY, ORDER BY or LIMIT!
+     * @param string $groupBy Optional GROUP BY field(s), if none, supply blank string.
+     * @param string $orderBy Optional ORDER BY field(s), if none, supply blank string.
+     * @param string $limit Optional LIMIT value ([begin,]max), if none, supply blank string.
+     * @return bool|\mysqli_result SQL result pointer
+     * @see mm_query()
+     */
+    private function exec_mm_query_uidList($select, $local_table_uidlist, $mm_table, $foreign_table = '', $whereClause = '', $groupBy = '', $orderBy = '', $limit = '')
+    {
+        return $GLOBALS['TYPO3_DB']->exec_SELECTquery(
+            $select,
+            $mm_table . ($foreign_table ? ',' . $foreign_table : ''),
+            $mm_table . '.uid_local IN (' . $local_table_uidlist . ')'
+            . ($foreign_table ? ' AND ' . $foreign_table . '.uid=' . $mm_table . '.uid_foreign' : '')
+            . $whereClause,
+            $groupBy,
+            $orderBy,
+            $limit
+        );
     }
 }
