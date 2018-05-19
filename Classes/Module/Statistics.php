@@ -14,6 +14,8 @@ namespace DirectMailTeam\DirectMail\Module;
  * The TYPO3 project - inspiring people to share!
  */
 
+use Doctrine\DBAL\Types\Type;
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
@@ -26,6 +28,7 @@ use TYPO3\CMS\Backend\Utility\IconUtility;
 use DirectMailTeam\DirectMail\DirectMailUtility;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use TYPO3\CMS\Frontend\Page\PageRepository;
 
 /**
  * Module Statistics of tx_directmail extension
@@ -61,7 +64,7 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
     public $cshTable;
     public $formname = 'dmailform';
 
-    /*
+    /**
      * @var \TYPO3\CMS\Frontend\Page\PageRepository
      */
     public $sys_page;
@@ -125,7 +128,7 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
         $this->MOD_MENU['dmail_mode'] = BackendUtility::unsetMenuItems($this->params, $this->MOD_MENU['dmail_mode'], 'menu.dmail_mode');
 
             // initialize the page selector
-        $this->sys_page = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
+        $this->sys_page = GeneralUtility::makeInstance(PageRepository::class);
         $this->sys_page->init(true);
 
             // initialize backend user language
@@ -482,67 +485,82 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
      */
     public function cmd_displayPageInfo()
     {
-        // Here the dmail list is rendered:
-        $res = $GLOBALS["TYPO3_DB"]->exec_SELECTquery(
-            '*',
-            'sys_dmail',
-            'pid=' . intval($this->id) .
-                ' AND type IN (0,1)' .
-                ' AND issent = 1' .
-                BackendUtility::deleteClause('sys_dmail'),
-            '',
-            'scheduled DESC, scheduled_begin DESC'
-            );
+        /** @var \TYPO3\CMS\Core\Database\Query\QueryBuilder $queryBuilder */
+        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getQueryBuilderForTable('sys_dmail');
 
-        if ($GLOBALS["TYPO3_DB"]->sql_num_rows($res)) {
-            $onClick = ' onClick="return confirm(' . GeneralUtility::quoteJSvalue(sprintf($this->getLanguageService()->getLL('nl_l_warning'), $GLOBALS["TYPO3_DB"]->sql_num_rows($res))) . ');"';
-        } else {
-            $onClick = '';
-        }
+        $statement = $queryBuilder
+            ->select('uid', 'scheduled', 'scheduled_begin', 'scheduled_end', 'subject')
+            ->from('sys_dmail')
+            ->andWhere(
+                $queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($this->id, \PDO::PARAM_INT)),
+                $queryBuilder->expr()->eq('issent', $queryBuilder->expr()->literal(1, Type::INTEGER)),
+                $queryBuilder->expr()->in('type', [0, 1])
+            )
+            ->orderBy('scheduled', 'DESC')
+            ->addOrderBy('scheduled_begin', 'DESC')
+            ->execute();
+
         $out = '';
+        $firstRow = true;
+        $sentMsgQueuing = $this->getLanguageService()->getLL('stats_overview_queuing');
+        $sentMsgSending = $this->getLanguageService()->getLL('stats_overview_sending');
+        $sentMsgSent = $this->getLanguageService()->getLL('stats_overview_sent');
 
-        if ($GLOBALS["TYPO3_DB"]->sql_num_rows($res)) {
-            $out .='<table border="0" cellpadding="0" cellspacing="0" class="table table-striped table-hover">';
-            $out .='<thead>
-					<th>&nbsp;</th>
-					<th><b>' . $this->getLanguageService()->getLL('stats_overview_subject') . '</b></th>
-					<th><b>' . $this->getLanguageService()->getLL('stats_overview_scheduled') . '</b></th>
-					<th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_begun') . '</b></th>
-					<th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_ended') . '</b></th>
-					<th nowrap="nowrap"><b>' . $this->getLanguageService()->getLL('stats_overview_total_sent') . '</b></th>
-					<th><b>' . $this->getLanguageService()->getLL('stats_overview_status') . '</b></th>
-				</thead>';
-            while (($row = $GLOBALS["TYPO3_DB"]->sql_fetch_assoc($res))) {
-                $countRes = $GLOBALS["TYPO3_DB"]->exec_SELECTquery(
-                    'count(*)',
-                    'sys_dmail_maillog',
-                    'mid = ' . $row['uid'] .
-                        ' AND response_type=0' .
-                        ' AND html_sent>0'
-                );
-                list($count) = $GLOBALS["TYPO3_DB"]->sql_fetch_row($countRes);
+        while ($row = $statement->fetch()) {
+            if ($firstRow) {
+                $out .= '<table border="0" cellpadding="0" cellspacing="0" class="table table-striped table-hover">';
+                $out .=
+                    '<thead>
+                        <th>&nbsp;</th>
+                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_subject') . '</b></th>
+                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_scheduled') . '</b></th>
+                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_begun') . '</b></th>
+                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_ended') . '</b></th>
+                        <th nowrap="nowrap"><b>' . $this->getLanguageService()->getLL('stats_overview_total_sent') . '</b></th>
+                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_status') . '</b></th>
+                    </thead>';
 
-                if (!empty($row['scheduled_begin'])) {
-                    if (!empty($row['scheduled_end'])) {
-                        $sent = $this->getLanguageService()->getLL('stats_overview_sent');
-                    } else {
-                        $sent = $this->getLanguageService()->getLL('stats_overview_sending');
-                    }
-                } else {
-                    $sent = $this->getLanguageService()->getLL('stats_overview_queuing');
-                }
-
-                $out.='<tr class="db_list_normal">
-					<td>' . $this->iconFactory->getIconForRecord('sys_dmail', $row, Icon::SIZE_SMALL)->render() . '</td>
-					<td>' . $this->linkDMail_record(GeneralUtility::fixed_lgd_cs($row['subject'], 30) . '  ', $row['uid'], $row['subject']) . '&nbsp;&nbsp;</td>
-					<td>' . BackendUtility::datetime($row["scheduled"]) . '</td>
-					<td>' . ($row["scheduled_begin"]?BackendUtility::datetime($row["scheduled_begin"]):'&nbsp;') . '</td>
-					<td>' . ($row["scheduled_end"]?BackendUtility::datetime($row["scheduled_end"]):'&nbsp;') . '</td>
-					<td>' . ($count?$count:'&nbsp;') . '</td>
-					<td>' . $sent . '</td>
-				</tr>';
+                $firstRow = false;
             }
-            $out.='</table>';
+
+            /** @var \TYPO3\CMS\Core\Database\Query\QueryBuilder $queryBuilder */
+            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
+                ->getQueryBuilderForTable('sys_dmail_maillog');
+
+            $count = $queryBuilder
+                ->count('uid')
+                ->from('sys_dmail_maillog')
+                ->andWhere(
+                    $queryBuilder->expr()->eq('mid', $queryBuilder->createNamedParameter($row['uid'], \PDO::PARAM_INT)),
+                    $queryBuilder->expr()->eq('response_type', $queryBuilder->expr()->literal(0, Type::INTEGER)),
+                    $queryBuilder->expr()->gt('html_sent', $queryBuilder->expr()->literal(0, Type::INTEGER))
+                )
+                ->execute()
+                ->fetchColumn(0);
+
+            if (empty($row['scheduled_begin'])) {
+                $sentStatus = $sentMsgQueuing;
+            } elseif (empty($row['scheduled_end'])) {
+                $sentStatus = $sentMsgSending;
+            } else {
+                $sentStatus = $sentMsgSent;
+            }
+
+            $out .=
+                '<tr class="db_list_normal">
+                    <td>' . $this->iconFactory->getIconForRecord('sys_dmail', $row, Icon::SIZE_SMALL)->render() . '</td>
+                    <td>' . $this->linkDMail_record(GeneralUtility::fixed_lgd_cs($row['subject'], 30) . '  ', $row['uid'], $row['subject']) . '&nbsp;&nbsp;</td>
+                    <td>' . BackendUtility::datetime($row['scheduled']) . '</td>
+                    <td>' . ($row['scheduled_begin'] ? BackendUtility::datetime($row['scheduled_begin']) : '&nbsp;') . '</td>
+                    <td>' . ($row['scheduled_end'] ? BackendUtility::datetime($row['scheduled_end']) : '&nbsp;') . '</td>
+                    <td>' . ($count !== false ? $count : '&nbsp;') . '</td>
+                    <td>' . $sentStatus . '</td>
+                </tr>';
+        }
+
+        if (!$firstRow) {
+            $out .= '</table>';
         }
 
         $theOutput = $this->doc->section($this->getLanguageService()->getLL('stats_overview_choose'), $out, 1, 1, 0, true);
