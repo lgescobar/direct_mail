@@ -14,6 +14,8 @@ namespace DirectMailTeam\DirectMail;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Core\Messaging\FlashMessage;
+use TYPO3\CMS\Core\Messaging\FlashMessageService;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Service\MarkerBasedTemplateService;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
@@ -986,7 +988,7 @@ class Dmailer
         if ($this->organisation) {
             $header->addTextHeader('Organization', $this->organisation);
         }
-        
+
             // Hook to edit or add the mail headers
         if (isset($GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS']['ext/direct_mail']['res/scripts/class.dmailer.php']['mailHeadersHook'])) {
             $mailHeadersHook =& $GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS']['ext/direct_mail']['res/scripts/class.dmailer.php']['mailHeadersHook'];
@@ -1072,7 +1074,46 @@ class Dmailer
     public function fetchHTML($url)
     {
         // Fetches the content of the page
-        $this->theParts['html']['content'] = GeneralUtility::getURL($url);
+        $report = [];
+        $resHeader = '';
+        $contents = GeneralUtility::getURL($url, 1, null, $report);
+        // $this->theParts['html']['content'] = GeneralUtility::getURL($url);
+        if ($contents !== false) {
+            $headerPos = strpos($contents, CRLF . CRLF);
+            if ($headerPos !== false) {
+                $resHeader = substr($contents, 0, $headerPos);
+                $this->theParts['html']['content'] = substr($contents, $headerPos, strlen($contents) - $headerPos);
+            } else {
+                /** @var FlashMessageService $flashMessageService */
+                $flashMessageService = GeneralUtility::makeInstance(FlashMessageService::class);
+                $defaultFlashMessageQueue = $flashMessageService->getMessageQueueByIdentifier();
+
+                /* @var $flashMessage FlashMessage */
+                $flashMessage = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Messaging\\FlashMessage',
+                    json_encode($report),
+                    'Request error',
+                    FlashMessage::WARNING
+                );
+                $defaultFlashMessageQueue->enqueue($flashMessage);
+
+                $this->theParts['html']['content'] = false;
+            }
+        } else {
+            /** @var FlashMessageService $flashMessageService */
+            $flashMessageService = GeneralUtility::makeInstance(FlashMessageService::class);
+            $defaultFlashMessageQueue = $flashMessageService->getMessageQueueByIdentifier();
+
+            /* @var $flashMessage FlashMessage */
+            $flashMessage = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Messaging\\FlashMessage',
+                $report['message'],
+                'Request error ' . $report['error'],
+                FlashMessage::WARNING
+            );
+            $defaultFlashMessageQueue->enqueue($flashMessage);
+
+            $this->theParts['html']['content'] = false;
+        }
+
         if ($this->theParts['html']['content']) {
             $urlPart = parse_url($url);
             if ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['direct_mail']['UseHttpToFetch'] == 1) {

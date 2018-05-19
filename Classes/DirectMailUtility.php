@@ -1194,7 +1194,8 @@ class DirectMailUtility
             // fetch the HTML url
         if ($htmlUrl) {
             // Username and password is added in htmlmail object
-            $success = $htmlmail->addHTML(self::addUserPass($htmlUrl, $params));
+            $url = self::addUserPass($htmlUrl, $params);
+            $success = $htmlmail->addHTML($url);
                 // If type = 1, we have an external page.
             if ($row['type'] == 1) {
                 // Try to auto-detect the charset of the message
@@ -1211,7 +1212,7 @@ class DirectMailUtility
             if ($htmlmail->extractFramesInfo()) {
                 $errorMsg[] = $GLOBALS["LANG"]->getLL('dmail_frames_not allowed');
             } elseif (!$success || !$htmlmail->theParts['html']['content']) {
-                $errorMsg[] = $GLOBALS["LANG"]->getLL('dmail_no_html_content');
+                $errorMsg[] = $GLOBALS["LANG"]->getLL('dmail_no_html_content') . ' URL: ' . $url;
             } elseif (!strstr($htmlmail->theParts['html']['content'], '<!--DMAILER_SECTION_BOUNDARY')) {
                 $warningMsg[] = $GLOBALS["LANG"]->getLL('dmail_no_html_boundaries');
             }
