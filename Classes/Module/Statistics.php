@@ -14,8 +14,7 @@ namespace DirectMailTeam\DirectMail\Module;
  * The TYPO3 project - inspiring people to share!
  */
 
-use Doctrine\DBAL\Types\Type;
-use TYPO3\CMS\Core\Database\ConnectionPool;
+use DirectMailTeam\DirectMail\Utility\StatisticsUtility;
 use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
@@ -28,6 +27,7 @@ use TYPO3\CMS\Backend\Utility\IconUtility;
 use DirectMailTeam\DirectMail\DirectMailUtility;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use TYPO3\CMS\Fluid\View\StandaloneView;
 use TYPO3\CMS\Frontend\Page\PageRepository;
 
 /**
@@ -43,6 +43,10 @@ use TYPO3\CMS\Frontend\Page\PageRepository;
  */
 class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
 {
+    const DEFAULT_TEMPLATE_ROOT_PATH = 'EXT:direct_mail/Resources/Private/Templates';
+    const DEFAULT_LAYOUT_ROOT_PATH = 'EXT:direct_mail/Resources/Private/Layouts';
+    const DEFAULT_PARTIAL_ROOT_PATH = 'EXT:direct_mail/Resources/Private/Partials';
+
     public $extKey = 'direct_mail';
     public $fieldList = 'uid,name,title,email,phone,www,address,company,city,zip,country,fax,module_sys_dmail_category,module_sys_dmail_html';
     // Internal
@@ -90,6 +94,11 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
      * @var string
      */
     protected $moduleName = 'DirectMailNavFrame_Statistics';
+
+    /**
+     * @var \TYPO3\CMS\Fluid\View\StandaloneView
+     */
+    protected $view;
 
     /**
      * Constructor
@@ -150,6 +159,11 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
         if ($GLOBALS["BE_USER"]->uc['edit_showFieldHelp']) {
             $this->getLanguageService()->loadSingleTableDescription($this->cshTable);
         }
+
+        $this->view = GeneralUtility::makeInstance(StandaloneView::class);
+        $this->view->setTemplateRootPaths([self::DEFAULT_TEMPLATE_ROOT_PATH]);
+        $this->view->setLayoutRootPaths([self::DEFAULT_LAYOUT_ROOT_PATH]);
+        $this->view->setPartialRootPaths([self::DEFAULT_PARTIAL_ROOT_PATH]);
     }
 
     /**
@@ -215,6 +229,7 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
 					';
 
             // JavaScript
+            $this->getPageRenderer()->loadRequireJsModule('TYPO3/CMS/DirectMail/StatisticsModule');
             $this->doc->JScode = '
 				<script language="javascript" type="text/javascript">
 					script_ended = 0;
@@ -485,83 +500,18 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
      */
     public function cmd_displayPageInfo()
     {
-        /** @var \TYPO3\CMS\Core\Database\Query\QueryBuilder $queryBuilder */
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-            ->getQueryBuilderForTable('sys_dmail');
+        $statisticsUtility = GeneralUtility::makeInstance(StatisticsUtility::class);
+        $pageSize = StatisticsUtility::DEFAULT_STATISTIC_ENTRIES_PER_PAGE;
 
-        $statement = $queryBuilder
-            ->select('uid', 'scheduled', 'scheduled_begin', 'scheduled_end', 'subject')
-            ->from('sys_dmail')
-            ->andWhere(
-                $queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($this->id, \PDO::PARAM_INT)),
-                $queryBuilder->expr()->eq('issent', $queryBuilder->expr()->literal(1, Type::INTEGER)),
-                $queryBuilder->expr()->in('type', [0, 1])
-            )
-            ->orderBy('scheduled', 'DESC')
-            ->addOrderBy('scheduled_begin', 'DESC')
-            ->execute();
+        $this->view->setTemplate('Statistics/List');
+        $this->view->assign('statistics', $statisticsUtility->getPaginatedStatistics($this->id, 0, $pageSize));
+        $this->view->assign('linkNext', $statisticsUtility->getLinkForNextPage($this->id, 0, $pageSize));
+        $this->view->assign(
+            'dateFormat',
+            $GLOBALS['TYPO3_CONF_VARS']['SYS']['ddmmyy'] . ' ' . $GLOBALS['TYPO3_CONF_VARS']['SYS']['hhmm']
+        );
 
-        $out = '';
-        $firstRow = true;
-        $sentMsgQueuing = $this->getLanguageService()->getLL('stats_overview_queuing');
-        $sentMsgSending = $this->getLanguageService()->getLL('stats_overview_sending');
-        $sentMsgSent = $this->getLanguageService()->getLL('stats_overview_sent');
-
-        while ($row = $statement->fetch()) {
-            if ($firstRow) {
-                $out .= '<table border="0" cellpadding="0" cellspacing="0" class="table table-striped table-hover">';
-                $out .=
-                    '<thead>
-                        <th>&nbsp;</th>
-                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_subject') . '</b></th>
-                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_scheduled') . '</b></th>
-                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_begun') . '</b></th>
-                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_delivery_ended') . '</b></th>
-                        <th nowrap="nowrap"><b>' . $this->getLanguageService()->getLL('stats_overview_total_sent') . '</b></th>
-                        <th><b>' . $this->getLanguageService()->getLL('stats_overview_status') . '</b></th>
-                    </thead>';
-
-                $firstRow = false;
-            }
-
-            /** @var \TYPO3\CMS\Core\Database\Query\QueryBuilder $queryBuilder */
-            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-                ->getQueryBuilderForTable('sys_dmail_maillog');
-
-            $count = $queryBuilder
-                ->count('uid')
-                ->from('sys_dmail_maillog')
-                ->andWhere(
-                    $queryBuilder->expr()->eq('mid', $queryBuilder->createNamedParameter($row['uid'], \PDO::PARAM_INT)),
-                    $queryBuilder->expr()->eq('response_type', $queryBuilder->expr()->literal(0, Type::INTEGER)),
-                    $queryBuilder->expr()->gt('html_sent', $queryBuilder->expr()->literal(0, Type::INTEGER))
-                )
-                ->execute()
-                ->fetchColumn(0);
-
-            if (empty($row['scheduled_begin'])) {
-                $sentStatus = $sentMsgQueuing;
-            } elseif (empty($row['scheduled_end'])) {
-                $sentStatus = $sentMsgSending;
-            } else {
-                $sentStatus = $sentMsgSent;
-            }
-
-            $out .=
-                '<tr class="db_list_normal">
-                    <td>' . $this->iconFactory->getIconForRecord('sys_dmail', $row, Icon::SIZE_SMALL)->render() . '</td>
-                    <td>' . $this->linkDMail_record(GeneralUtility::fixed_lgd_cs($row['subject'], 30) . '  ', $row['uid'], $row['subject']) . '&nbsp;&nbsp;</td>
-                    <td>' . BackendUtility::datetime($row['scheduled']) . '</td>
-                    <td>' . ($row['scheduled_begin'] ? BackendUtility::datetime($row['scheduled_begin']) : '&nbsp;') . '</td>
-                    <td>' . ($row['scheduled_end'] ? BackendUtility::datetime($row['scheduled_end']) : '&nbsp;') . '</td>
-                    <td>' . ($count !== false ? $count : '&nbsp;') . '</td>
-                    <td>' . $sentStatus . '</td>
-                </tr>';
-        }
-
-        if (!$firstRow) {
-            $out .= '</table>';
-        }
+        $out = $this->view->render();
 
         $theOutput = $this->doc->section($this->getLanguageService()->getLL('stats_overview_choose'), $out, 1, 1, 0, true);
         $theOutput .= '<div style="padding-top: 20px;"></div>';

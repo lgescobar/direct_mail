@@ -931,6 +931,9 @@
 			<trans-unit id="stats_website_users_disabled">
 				<source>website users disabled</source>
 			</trans-unit>
+			<trans-unit id="stats_load_more">
+				<source>Load more statistics</source>
+			</trans-unit>
 			<trans-unit id="subscriber_info">
 				<source>Subscriber Info</source>
 			</trans-unit>
