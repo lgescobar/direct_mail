@@ -1,0 +1,52 @@
+<html xmlns:f="http://typo3.org/ns/TYPO3/Fluid/ViewHelpers"
+      xmlns:core="http://typo3.org/ns/TYPO3/CMS/Core/ViewHelpers"
+      data-namespace-typo3-fluid="true">
+
+<f:layout name="Default"/>
+
+<f:section name="Main">
+    <f:variable name="renderedTrashBinIcon">
+        <core:icon identifier="actions-edit-delete" size="small"/>
+    </f:variable>
+
+    <table class="table table-striped table-hover">
+        <f:render partial="MailerEngine/TableHeader"/>
+
+        <f:for each="{sentMails}" as="mail">
+            <tr class="db_list_normal">
+                <td>
+                    <core:iconForRecord table="sys_dmail" row="{mail}" size="small"/>
+                </td>
+                <td>
+                    <span title="[{mail.uid}] {mail.subject}">
+                        <f:format.crop maxCharacters="100" append="&hellip;"
+                                       respectWordBoundaries="false">{mail.subject}</f:format.crop>
+                    </span>
+                    &nbsp;&nbsp;
+                </td>
+                <td>
+                    <f:format.date format="{dateFormat}">{mail.scheduled}</f:format.date>
+                </td>
+                <td>
+                    <f:format.date format="{dateFormat}">{mail.scheduled_begin}</f:format.date>
+                </td>
+                <td>
+                    <f:format.date format="{dateFormat}">{mail.scheduled_end}</f:format.date>
+                </td>
+                <td style="text-align: center;">
+                    {mail.sentMessageCount}
+                </td>
+                <td style="text-align: center;">
+                    <f:if condition="{mail.deleteLink}">
+                        <a href="{mail.deleteLink}" title="Delete mail [{mail.uid}]">
+                            <f:format.raw>{renderedTrashBinIcon}</f:format.raw>
+                        </a>
+                    </f:if>
+                </td>
+            </tr>
+        </f:for>
+    </table>
+
+</f:section>
+
+</html>

@@ -500,6 +500,7 @@ class Statistics extends \TYPO3\CMS\Backend\Module\BaseScriptClass
      */
     public function cmd_displayPageInfo()
     {
+        /** @var \DirectMailTeam\DirectMail\Utility\StatisticsUtility $statisticsUtility */
         $statisticsUtility = GeneralUtility::makeInstance(StatisticsUtility::class);
         $pageSize = StatisticsUtility::DEFAULT_STATISTIC_ENTRIES_PER_PAGE;
 

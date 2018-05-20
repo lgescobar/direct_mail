@@ -15,6 +15,7 @@ namespace DirectMailTeam\DirectMail\Module;
  */
 
 use DirectMailTeam\DirectMail\DirectMailUtility;
+use DirectMailTeam\DirectMail\Utility\MailerEngineUtility;
 use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
@@ -24,6 +25,7 @@ use TYPO3\CMS\Core\Messaging\FlashMessage;
 use TYPO3\CMS\Core\Messaging\FlashMessageService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use TYPO3\CMS\Fluid\View\StandaloneView;
 
 /**
  * Module Mailer-Engine for tx_directmail extension
@@ -73,6 +75,11 @@ class MailerEngine extends \TYPO3\CMS\Backend\Module\BaseScriptClass
      * @var string
      */
     protected $moduleName = 'DirectMailNavFrame_MailerEngine';
+
+    /**
+     * @var \TYPO3\CMS\Fluid\View\StandaloneView
+     */
+    protected $view;
 
     /**
      * Constructor
@@ -132,6 +139,11 @@ class MailerEngine extends \TYPO3\CMS\Backend\Module\BaseScriptClass
         if ($GLOBALS["BE_USER"]->uc['edit_showFieldHelp']) {
             $this->getLanguageService()->loadSingleTableDescription($this->cshTable);
         }
+
+        $this->view = GeneralUtility::makeInstance(StandaloneView::class);
+        $this->view->setTemplateRootPaths([Statistics::DEFAULT_TEMPLATE_ROOT_PATH]);
+        $this->view->setLayoutRootPaths([Statistics::DEFAULT_LAYOUT_ROOT_PATH]);
+        $this->view->setPartialRootPaths([Statistics::DEFAULT_PARTIAL_ROOT_PATH]);
     }
 
     /**
@@ -408,49 +420,23 @@ class MailerEngine extends \TYPO3\CMS\Backend\Module\BaseScriptClass
             $invokeMessage .= '<div style="padding-top: 20px;"></div>';
         }
 
-        // Display mailer engine status
-        $res = $GLOBALS["TYPO3_DB"]->exec_SELECTquery(
-            'uid,pid,subject,scheduled,scheduled_begin,scheduled_end',
-            'sys_dmail',
-            'pid=' . intval($this->id) .
-                ' AND scheduled>0' .
-                BackendUtility::deleteClause('sys_dmail'),
-            '',
-            'scheduled DESC'
+        /** @var \DirectMailTeam\DirectMail\Utility\MailerEngineUtility $statisticsUtility */
+        $mailerEngineUtility = GeneralUtility::makeInstance(MailerEngineUtility::class);
+        $pageSize = MailerEngineUtility::DEFAULT_STATISTIC_ENTRIES_PER_PAGE;
+
+        $this->view->setTemplate('MailerEngine/List');
+        $this->view->assign('sentMails', $mailerEngineUtility->getPaginatedStatistics($this->id, 0, $pageSize));
+        $this->view->assign(
+            'dateFormat',
+            $GLOBALS['TYPO3_CONF_VARS']['SYS']['ddmmyy'] . ' ' . $GLOBALS['TYPO3_CONF_VARS']['SYS']['hhmm']
         );
 
-        $out = '<tr class="t3-row-header">
-				<td>&nbsp;</td>
-				<td><b>' . $this->getLanguageService()->getLL('dmail_mailerengine_subject') . '&nbsp;&nbsp;</b></td>
-				<td><b>' . $this->getLanguageService()->getLL('dmail_mailerengine_scheduled') . '&nbsp;&nbsp;</b></td>
-				<td><b>' . $this->getLanguageService()->getLL('dmail_mailerengine_delivery_begun') . '&nbsp;&nbsp;</b></td>
-				<td><b>' . $this->getLanguageService()->getLL('dmail_mailerengine_delivery_ended') . '&nbsp;&nbsp;</b></td>
-				<td style="text-align: center;"><b>&nbsp;' . $this->getLanguageService()->getLL('dmail_mailerengine_number_sent') . '&nbsp;</b></td>
-				<td style="text-align: center;"><b>&nbsp;' . $this->getLanguageService()->getLL('dmail_mailerengine_delete') . '&nbsp;</b></td>
-			</tr>';
+        $out = $this->view->render();
 
-        while (($row = $GLOBALS["TYPO3_DB"]->sql_fetch_assoc($res))) {
-            $countres = $GLOBALS["TYPO3_DB"]->exec_SELECTquery(
-                'count(*)',
-                'sys_dmail_maillog',
-                'mid=' . intval($row['uid']) .
-                    ' AND response_type=0' .
-                    ' AND html_sent>0'
-                );
-            list($count) = $GLOBALS["TYPO3_DB"]->sql_fetch_row($countres);
-            $out .='<tr class="db_list_normal">
-						<td>' . $this->iconFactory->getIconForRecord('sys_dmail', $row, Icon::SIZE_SMALL)->render() . '</td>
-						<td>' . $this->linkDMail_record(htmlspecialchars(GeneralUtility::fixed_lgd_cs($row['subject'], 100)) . '&nbsp;&nbsp;', $row['uid']) . '</td>
-						<td>' . BackendUtility::datetime($row['scheduled']) . '&nbsp;&nbsp;</td>
-						<td>' . ($row['scheduled_begin']?BackendUtility::datetime($row['scheduled_begin']):'') . '&nbsp;&nbsp;</td>
-						<td>' . ($row['scheduled_end']?BackendUtility::datetime($row['scheduled_end']):'') . '&nbsp;&nbsp;</td>
-						<td style="text-align: center;">' . ($count?$count:'&nbsp;') . '</td>
-						<td style="text-align: center;">' . $this->deleteLink($row['uid']) . '</td>
-					</tr>';
-        }
-
-        $out = $invokeMessage . '<table class="table table-striped table-hover">' . $out . '</table>';
-        return $this->doc->section(BackendUtility::cshItem($this->cshTable, 'mailerengine_status', $GLOBALS["BACK_PATH"]) . $this->getLanguageService()->getLL('dmail_mailerengine_status'), $out, 1, 1, 0, true);
+        // Display mailer engine status
+        $out = $invokeMessage . $out;
+        return $this->doc->section(BackendUtility::cshItem($this->cshTable, 'mailerengine_status', $GLOBALS["BACK_PATH"])
+            . $this->getLanguageService()->getLL('dmail_mailerengine_status'), $out, 1, 1, 0, true);
     }
 
     /**
