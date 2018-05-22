@@ -32,4 +32,8 @@ return [
         'path' => '/direct_mail/statistics',
         'target' => \DirectMailTeam\DirectMail\Controller\AjaxController::class . '::getPaginatedNewsletterStatistics'
     ],
+    'direct_mail_newsletter_folders' => [
+        'path' => '/direct_mail/newsletter_folders',
+        'target' => \DirectMailTeam\DirectMail\Controller\AjaxController::class . '::getNewsletterFolders'
+    ],
 ];
