@@ -45,6 +45,16 @@ if (TYPO3_MODE == 'BE') {
         $TBE_MODULES = $temp_TBE_MODULES;
     }
 
+    \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::registerExtDirectComponent(
+        'TYPO3.DirectMail.Navigation.DataProvider',
+        \DirectMailTeam\DirectMail\ExtDirect\NavigationDataProvider::class
+    );
+
+    \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addNavigationComponent(
+        'DirectMailNavFrame_tools',
+        'directmail-navigation'
+    );
+
     TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addModule('DirectMailNavFrame', '', '', '',
         array(
             'routeTarget' => DirectMailTeam\DirectMail\Module\NavFrame::class . '::mainAction',
@@ -140,9 +150,27 @@ if (TYPO3_MODE == 'BE') {
                 ),
                 'll_ref' => 'LLL:EXT:direct_mail/Resources/Private/Language/locallangConfiguration.xlf',
             ),
-            'navigationFrameModule' => 'DirectMailNavFrame',
-            'navigationFrameModuleParameters' => array('currentModule' => 'DirectMailNavFrame_Configuration'),
+            // 'navigationFrameModule' => 'DirectMailNavFrame',
+            // 'navigationFrameModuleParameters' => array('currentModule' => 'DirectMailNavFrame_Configuration'),
+            'navigationComponentId' => 'directmail-navigation',
         )
+    );
+
+    \TYPO3\CMS\Extbase\Utility\ExtensionUtility::registerModule(
+        'DirectMailTeam.' . $_EXTKEY,
+        'DirectMailNavFrame',   // Main area
+        'Navigation',   // Name of the module
+        '',             // Position of the module
+        [               // Allowed controller action combinations
+            'DirectMailNavigation' => 'index',
+        ],
+        [               // Additional configuration
+            'access' => 'user,group',
+            // 'icon' => 'EXT:' . $_EXTKEY . '/Resources/Public/Icons/Extension.svg',
+            // 'labels' => 'LLL:EXT:' . $_EXTKEY . '/Resources/Private/Language/locallang_mod.xlf',
+            // 'navigationComponentId' => 'typo3-pagetree',
+            'navigationComponentId' => 'directmail-navigation',
+        ]
     );
 }
 
